@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// 1. Người dùng
+model NguoiDung {
+  id       Int      @id @default(autoincrement())
+  name     String   @db.VarChar(255)
+  email    String   @unique @db.VarChar(255)
+  password String   @map("pass_word") @db.VarChar(255)
+  phone    String?  @db.VarChar(50)
+  birthday String?  @map("birth_day") @db.VarChar(50)
+  gender   Boolean?
+  role     String   @db.VarChar(50)
+  avatar String? @db.VarChar(500)
+
+  datPhongs DatPhong[]
+  binhLuans BinhLuan[]
+
+  @@map("NguoiDung")
+}
+
+// 2. Vị trí
+model ViTri {
+  id        Int     @id @default(autoincrement())
+  tenViTri  String  @map("ten_vi_tri") @db.VarChar(255)
+  tinhThanh String  @map("tinh_thanh") @db.VarChar(255)
+  quocGia   String  @map("quoc_gia") @db.VarChar(255)
+  hinhAnh   String? @map("hinh_anh") @db.VarChar(500)
+
+  phongs Phong[]
+
+  @@map("ViTri")
+}
+
+// 3. Phòng thuê
+model Phong {
+  id       Int    @id @default(autoincrement())
+  tenPhong String @map("ten_phong") @db.VarChar(255)
+  khach    Int
+  phongNgu Int    @map("phong_ngu")
+  giuong   Int
+  phongTam Int    @map("phong_tam")
+  moTa     String @map("mo_ta") @db.Text
+  giaTien  Int    @map("gia_tien")
+
+  mayGiat Boolean @default(false) @map("may_giat")
+  banLa   Boolean @default(false) @map("ban_la")
+  tivi    Boolean @default(false)
+  dieuHoa Boolean @default(false) @map("dieu_hoa")
+  wifi    Boolean @default(false)
+  bep     Boolean @default(false)
+  doXe    Boolean @default(false) @map("do_xe")
+  hoBoi   Boolean @default(false) @map("ho_boi")
+  banUi   Boolean @default(false) @map("ban_ui")
+
+  maViTri Int     @map("ma_vi_tri")
+  hinhAnh String? @map("hinh_anh") @db.VarChar(500)
+
+  viTri     ViTri      @relation(fields: [maViTri], references: [id], onDelete: Restrict)
+  datPhongs DatPhong[]
+  binhLuans BinhLuan[]
+
+  @@index([maViTri])
+  @@map("Phong")
+}
+
+// 4. Đặt phòng
+model DatPhong {
+  id           Int      @id @default(autoincrement())
+  maPhong      Int      @map("ma_phong")
+  ngayDen      DateTime @map("ngay_den")
+  ngayDi       DateTime @map("ngay_di")
+  soLuongKhach Int      @map("so_luong_khach")
+  maNguoiDat   Int      @map("ma_nguoi_dat")
+
+  phong     Phong     @relation(fields: [maPhong], references: [id], onDelete: Restrict)
+  nguoiDung NguoiDung @relation(fields: [maNguoiDat], references: [id], onDelete: Restrict)
+
+  @@index([maPhong])
+  @@index([maNguoiDat])
+  @@map("DatPhong")
+}
+
+// 5. Bình luận
+model BinhLuan {
+  id              Int      @id @default(autoincrement())
+  maPhong         Int      @map("ma_phong")
+  maNguoiBinhLuan Int      @map("ma_nguoi_binh_luan")
+  ngayBinhLuan    DateTime @map("ngay_binh_luan")
+  noiDung         String   @map("noi_dung") @db.Text
+  saoBinhLuan     Int      @map("sao_binh_luan")
+
+  phong     Phong     @relation(fields: [maPhong], references: [id], onDelete: Restrict)
+  nguoiDung NguoiDung @relation(fields: [maNguoiBinhLuan], references: [id], onDelete: Restrict)
+
+  @@index([maPhong])
+  @@index([maNguoiBinhLuan])
+  @@map("BinhLuan")
+}
