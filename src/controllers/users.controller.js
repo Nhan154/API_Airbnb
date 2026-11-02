@@ -1,3 +1,4 @@
+
 import { sendPrismaError, logRequestError } from "../utils/sendPrismaError.js";
 import prisma from "../config/prisma.js";
 import bcrypt from "bcrypt";
@@ -48,12 +49,20 @@ export const createUser = async (req, res) => {
     if (typeof body !== "object" || Array.isArray(body) || Object.keys(body).length === 0) {
         return res.status(400).json({ message: "Vui lòng cung cấp thông tin người dùng." });
     }
+
     try {
         const { name, email, password, phone, birthday, gender, role } = body;
 
-        if (typeof name !== "string" || !name.trim() || typeof email !== "string" ||
-            !isValidEmail(email.trim()) || typeof password !== "string" || password.length < 8 ||
-            !["USER", "ADMIN"].includes(role) || !optionalProfileFieldsAreValid({ phone, birthday, gender })) {
+        if (
+            typeof name !== "string" ||
+            !name.trim() ||
+            typeof email !== "string" ||
+            !isValidEmail(email.trim()) ||
+            typeof password !== "string" ||
+            password.length < 8 ||
+            !["USER", "ADMIN"].includes(role) ||
+            !optionalProfileFieldsAreValid({ phone, birthday, gender })
+        ) {
             return res.status(400).json({
                 message: "Thông tin người dùng không hợp lệ; mật khẩu phải có ít nhất 8 ký tự.",
             });
@@ -122,10 +131,7 @@ export const getUserById = async (req, res) => {
         }
 
         // USER chỉ được xem tài khoản của mình
-        if (
-            req.user.role !== "ADMIN" &&
-            Number(req.user.id) !== id
-        ) {
+        if (req.user.role !== "ADMIN" && Number(req.user.id) !== id) {
             return res.status(403).json({
                 message: "Bạn không có quyền xem tài khoản này.",
             });
@@ -182,10 +188,7 @@ export const updateUser = async (req, res) => {
         }
 
         // USER chỉ được cập nhật tài khoản của mình
-        if (
-            req.user.role !== "ADMIN" &&
-            Number(req.user.id) !== id
-        ) {
+        if (req.user.role !== "ADMIN" && Number(req.user.id) !== id) {
             return res.status(403).json({
                 message: "Bạn không có quyền cập nhật tài khoản này.",
             });
@@ -200,11 +203,15 @@ export const updateUser = async (req, res) => {
             role,
         } = body;
 
-        if ((name !== undefined && (typeof name !== "string" || !name.trim())) ||
+        if (
+            (name !== undefined && (typeof name !== "string" || !name.trim())) ||
             (email !== undefined && (typeof email !== "string" || !isValidEmail(email.trim()))) ||
             (role !== undefined && !["USER", "ADMIN"].includes(role)) ||
-            !optionalProfileFieldsAreValid({ phone, birthday, gender })) {
-            return res.status(400).json({ message: "Thông tin người dùng không hợp lệ." });
+            !optionalProfileFieldsAreValid({ phone, birthday, gender })
+        ) {
+            return res.status(400).json({
+                message: "Thông tin người dùng không hợp lệ.",
+            });
         }
 
         const normalizedEmail = email === undefined ? undefined : email.trim().toLowerCase();
@@ -245,7 +252,6 @@ export const updateUser = async (req, res) => {
             message: "Cập nhật người dùng thành công",
             data: removePassword(updatedUser),
         });
-
     } catch (error) {
         if (sendPrismaError(res, error)) return;
         logRequestError("Update user error", error);
@@ -289,7 +295,6 @@ export const deleteUser = async (req, res) => {
         if (sendPrismaError(res, error)) return;
         logRequestError("Delete user error", error);
 
-        // P2003: Người dùng đang được tham chiếu bởi bảng khác
         if (error.code === "P2003") {
             return res.status(409).json({
                 message: "Không thể xóa người dùng vì đang có dữ liệu liên quan",
@@ -399,10 +404,11 @@ export const getUsersPagination = async (req, res) => {
 // Upload ảnh đại diện người dùng
 export const uploadAvatar = async (req, res) => {
     try {
-        const id = req.user.id;
+        // ID được lấy trực tiếp từ JWT nên USER chỉ upload avatar của mình.
+        const id = Number(req.user.id);
 
         // Kiểm tra mã người dùng
-        if (!id || isNaN(Number(id))) {
+        if (!Number.isInteger(id) || id <= 0) {
             return res.status(400).json({
                 message: "Vui lòng cung cấp id người dùng hợp lệ.",
             });
@@ -417,20 +423,12 @@ export const uploadAvatar = async (req, res) => {
 
         // Kiểm tra người dùng có tồn tại không
         const user = await prisma.nguoiDung.findUnique({
-            where: {
-                id: Number(id),
-            },
+            where: { id },
         });
 
         if (!user) {
             return res.status(404).json({
                 message: "Không tìm thấy người dùng.",
-            });
-        }
-
-        if (req.user.role !== "ADMIN" && req.user.id !== id) {
-            return res.status(403).json({
-                message: "Bạn không có quyền xem thông tin người dùng này.",
             });
         }
 
@@ -442,9 +440,7 @@ export const uploadAvatar = async (req, res) => {
 
         // Cập nhật URL ảnh vào database
         const updatedUser = await prisma.nguoiDung.update({
-            where: {
-                id: Number(id),
-            },
+            where: { id },
             data: {
                 avatar: uploadedImage.url,
             },
