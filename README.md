@@ -46,19 +46,23 @@ npm run dev
 
 Chỉ áp dụng migration đã review bằng `npx prisma migrate deploy --config prisma7.config.ts` trên môi trường đích. Không dùng lệnh reset với dữ liệu cần giữ.
 
+Lưu ý: file initial migration đã được chuẩn hóa tên bảng người dùng thành `nguoidung` sau khi database phát triển hiện tại đã áp dụng migration cũ. Không chạy `migrate deploy`, `migrate reset`, `migrate resolve` hoặc sửa `_prisma_migrations` trên database phát triển cũ. Migration mới đã được chạy từ đầu trên database local mới, nhưng chưa kiểm chứng trên MySQL Linux với `lower_case_table_names=0`; xem [hướng dẫn deploy](docs/DEPLOYMENT_GUIDE.md).
+
 ## Kiểm thử
 
 ```bash
 npm test
 ```
 
-Integration tests dùng DB thật, tạo dữ liệu tạm có cleanup; chạy bằng PowerShell:
+Integration tests chỉ chạy trên database local riêng có tên kết thúc bằng `_test`. Script tạo DB nếu chưa có và chạy `prisma migrate deploy` trước test; không reset hoặc xóa database. Nếu không khai báo `TEST_DATABASE_URL`, script tạo URL cùng server bằng cách thêm hậu tố `_test` vào tên DB trong `DATABASE_URL`.
 
-```powershell
-$env:RUN_INTEGRATION_TESTS = "1"
+Chạy bằng PowerShell:
+
+```bash
 npm run test:integration
-Remove-Item Env:RUN_INTEGRATION_TESTS
 ```
+
+Để kiểm tra toàn bộ migration từ đầu trên một DB tên mới chưa từng migrate, chạy `npm run test:integration -- --fresh-db`. DB test tạo ra được giữ lại; không đụng tới DB phát triển hay DB test cũ.
 
 Các test upload xác minh lỗi đầu vào và giới hạn file; không upload file lên tài khoản Cloudinary thật. Xem [checklist](docs/TEST_CHECKLIST.md) và [audit](docs/PROJECT_AUDIT.md).
 
@@ -73,4 +77,4 @@ Các test upload xác minh lỗi đầu vào và giới hạn file; không uploa
 - Production URL: chưa xác minh
 - Video YouTube: chưa đăng
 
-Tên biến môi trường: `PORT`, `NODE_ENV`, `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `CORS_ORIGIN`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`.
+Tên biến môi trường: `PORT`, `NODE_ENV`, `DATABASE_URL`, `TEST_DATABASE_URL` (tùy chọn; DB local riêng, hậu tố `_test`), `JWT_SECRET`, `JWT_EXPIRES_IN`, `CORS_ORIGIN`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`.

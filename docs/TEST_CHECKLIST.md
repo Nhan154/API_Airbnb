@@ -16,8 +16,9 @@ Kết quả lần chạy cuối: `npm test` 18 PASS / 0 FAIL / 1 SKIPPED; `npm r
 | Upload | All three routes missing file/signature mismatch; oversize; signature helper/provider error | PASS: unit + integration |
 | Cloudinary live | Valid image upload, persisted URL and actual provider outage | BLOCKED: not run against real account |
 | Prisma | validate, generate, migrate status | PASS: local; 2 migrations up to date |
-| Linux migration | Fresh apply on case-sensitive MySQL | BLOCKED: avatar migration name case mismatch |
+| Migration name consistency | Schema, init table, both user foreign keys, avatar migration use lowercase `nguoidung` | PASS: source inspection + fresh local migration |
+| Linux migration | Fresh apply on case-sensitive MySQL (`lower_case_table_names=0`) | BLOCKED: no Linux MySQL environment; local reports `lower_case_table_names=1` |
 | Postman | 36 method/path, DELETE query, room/location query and `formFile` | PASS: static assertions |
 | Production | Deploy/live endpoint regression | BLOCKED: not deployed |
 
-Run unit tests with `npm test`. Run DB-backed tests in PowerShell with `$env:RUN_INTEGRATION_TESTS = "1"; npm run test:integration; Remove-Item Env:RUN_INTEGRATION_TESTS`.
+Run unit tests with `npm test`; run DB-backed tests with `npm run test:integration`. The integration command creates/reuses a separate local database ending in `_test` and applies pending migrations. To create a new never-migrated database for migration verification, run `npm run test:integration -- --fresh-db`. No database is reset or dropped.

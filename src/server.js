@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import "dotenv/config";
 import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
 import prisma from "./config/prisma.js";
 import authRoutes from "./routes/auth.routes.js";
@@ -83,7 +84,7 @@ app.use((error, req, res, next) => {
 
 export default app;
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
 }

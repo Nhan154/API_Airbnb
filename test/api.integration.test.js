@@ -4,10 +4,24 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import prisma from "../src/config/prisma.js";
-import app from "../src/server.js";
 
 const enabled = process.env.RUN_INTEGRATION_TESTS === "1";
+let prisma;
+let app;
+if (enabled) {
+    if (process.env.NODE_ENV !== "test" || !process.env.TEST_DATABASE_URL) {
+        throw new Error("Integration tests require NODE_ENV=test and TEST_DATABASE_URL.");
+    }
+    const sourceUrl = new URL(process.env.INTEGRATION_SOURCE_DATABASE_URL ?? process.env.DATABASE_URL);
+    const testUrl = new URL(process.env.TEST_DATABASE_URL);
+    if (sourceUrl.hostname === testUrl.hostname && sourceUrl.pathname.toLowerCase() === testUrl.pathname.toLowerCase()) {
+        throw new Error("Integration tests refuse to use the development database.");
+    }
+    [{ default: prisma }, { default: app }] = await Promise.all([
+        import("../src/config/prisma.js"),
+        import("../src/server.js"),
+    ]);
+}
 const secret = process.env.JWT_SECRET;
 let server;
 let baseUrl;

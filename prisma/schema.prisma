@@ -21,7 +21,7 @@ model NguoiDung {
   datPhongs DatPhong[]
   binhLuans BinhLuan[]
 
-  @@map("NguoiDung")
+  @@map("nguoidung")
 }
 
 // 2. Vị trí

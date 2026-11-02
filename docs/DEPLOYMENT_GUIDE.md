@@ -6,9 +6,9 @@ Chưa deploy và chưa xác minh URL production. Repo chưa có cấu hình Verc
 
 ### Migration blocker trên MySQL/Linux
 
-Migration avatar hiện chạy `ALTER TABLE nguoidung`, trong khi migration đầu tạo `NguoiDung`. MySQL trên Linux thường mặc định `lower_case_table_names=0`, nên tên bảng được so sánh phân biệt hoa thường; trên máy local hiện tại DB trả `lower_case_table_names=1` và lưu tên bảng là `nguoidung`. Do đó migration status local không xác minh được khả năng migrate fresh trên Linux. [MySQL Reference Manual](https://dev.mysql.com/doc/refman/8.4/en/server-system-variables.html#sysvar_lower_case_table_names) mô tả khác biệt này.
+Schema và migrations hiện dùng thống nhất tên bảng vật lý `nguoidung`: model Prisma giữ tên `NguoiDung`, hai foreign key và migration avatar cũng trỏ tới tên lowercase. Cả hai migration đã apply thành công từ đầu trên một database `_test` mới ở máy local, nhưng local báo `lower_case_table_names=1`; chưa kiểm chứng trên Linux với `lower_case_table_names=0`. [MySQL Reference Manual](https://dev.mysql.com/doc/refman/8.4/en/server-system-variables.html#sysvar_lower_case_table_names) mô tả khác biệt này.
 
-Không chạy migrations trên production Linux trước khi xử lý khác biệt này. Migration đã áp dụng ở DB local nên chưa sửa SQL lịch sử. Hai hướng cần được chọn khi chuẩn bị môi trường đích: khởi tạo DB với `lower_case_table_names=1` nếu nhà cung cấp hỗ trợ (phải cấu hình trước khi khởi tạo data directory), hoặc lập kế hoạch migration-history correction có kiểm soát và đồng bộ checksum trên mọi DB đã áp dụng. Không đổi biến này trên DB đã khởi tạo và không chỉnh migration cũ tùy tiện.
+Initial migration đã áp dụng trên database phát triển trước khi file SQL được sửa để chuẩn hóa tên bảng. Không chạy `prisma migrate deploy`, `prisma migrate reset`, `prisma migrate resolve` hoặc sửa `_prisma_migrations` trên DB phát triển cũ. Không yêu cầu migrate lại DB này. Không có production DB hiện hữu; database Railway mới có thể dùng migration source hiện tại sau khi kiểm chứng trên môi trường Linux/MySQL đích. Không tuyên bố Linux đã được xác minh.
 
 ## Chuẩn bị
 

@@ -19,15 +19,19 @@ Ngày audit: 2026-11-03. `swagger.json`, PDF đề bài và ERD không có trong
 - Repo GitHub [đang public](https://github.com/Nhan154/API_Airbnb) và có một commit theo trang repo; danh sách file root không có `.env`. Repo public hiện có `.agents`, `.claude`, `.windsurf`; không xóa hay rewrite lịch sử trong lượt này.
 - README/docs/Postman là file bàn giao mới. Không push.
 
-## Migration case mismatch — blocker Linux
+## Chuẩn hóa tên bảng `nguoidung`
 
-Migration đầu tạo bảng `NguoiDung`; migration avatar chạy `ALTER TABLE nguoidung`. DB local thực tế trả `lower_case_table_names=1`, và tên bảng lưu là `nguoidung`; `migrate status` thấy 2 migrations up to date. MySQL Linux thường mặc định `lower_case_table_names=0`, phân biệt hoa thường, nên fresh migration có thể lỗi. Không sửa migration đã áp dụng và không reset DB. Production Linux phải dừng trước migration cho tới khi chốt cách xử lý; xem [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md). MySQL mô tả khác biệt này trong [Reference Manual](https://dev.mysql.com/doc/refman/8.4/en/server-system-variables.html#sysvar_lower_case_table_names).
+Prisma model vẫn là `NguoiDung`; `@@map("nguoidung")` ánh xạ sang tên bảng vật lý viết thường. Initial migration tạo `nguoidung`, hai foreign key từ `DatPhong` và `BinhLuan` tham chiếu `nguoidung`, và migration avatar dùng `ALTER TABLE nguoidung`. Không tìm thấy raw SQL trong `src` tham chiếu bảng người dùng.
+
+Initial migration đã được áp dụng trên database phát triển trước khi file migration được chuẩn hóa. Không sửa `_prisma_migrations` hoặc checksum. Database dev không bị reset hay migrate lại; tuyệt đối không chạy `prisma migrate deploy` lên database đó với source đã sửa. `migrate status` chỉ là thao tác kiểm tra trạng thái, không xác nhận checksum hay cho phép deploy lịch sử đã sửa. Chi tiết ở [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
+
+Đã tạo database mới `airbnb_db_casefix_1793643198702_e7200b_test` (tên đầy đủ trong output lệnh; hậu tố `_test`) và apply từ đầu cả hai migration thành công. MySQL local báo `lower_case_table_names=1`; đây không phải kiểm chứng Linux với `lower_case_table_names=0`. MySQL mô tả khác biệt trong [Reference Manual](https://dev.mysql.com/doc/refman/8.4/en/server-system-variables.html#sysvar_lower_case_table_names). Chưa có môi trường Linux thật nên trạng thái Linux là BLOCKED, không tuyên bố đã xác minh trên Linux.
 
 ## Trạng thái kiểm thử
 
 - `npm test`: 18 PASS, 0 FAIL, 1 integration suite SKIPPED theo mặc định.
-- `RUN_INTEGRATION_TESTS=1 npm run test:integration`: PASS trên DB local cho Auth, Users, Rooms, Locations, Bookings, Comments và upload validation; suite tạo fixture tạm và cleanup.
+- `npm run test:integration -- --fresh-db`: tạo database `_test` tên mới (không xóa DB test cũ), áp dụng cả hai migration từ đầu, rồi chạy Auth, Users, Rooms, Locations, Bookings, Comments và upload validation. Kết quả: 7 PASS, 0 FAIL. Test chạy trên local `lower_case_table_names=1`, không phải Linux case-sensitive.
 - Prisma validate/generate và migration status: PASS trên local (2 migrations up to date).
 - Postman static assertions: PASS, 36 operations.
-- Chưa upload ảnh hợp lệ lên tài khoản Cloudinary thật; Cloudinary helper lỗi được unit test với fake client. Không chạy migration fresh trên Linux và chưa deploy production.
+- Chưa upload ảnh hợp lệ lên tài khoản Cloudinary thật; Cloudinary helper lỗi được unit test với fake client. Chưa chạy migration fresh trên Linux và chưa deploy production.
 - Swagger gốc không có trong workspace, vì vậy chưa thể xác nhận schema request/response chính xác so với Swagger.

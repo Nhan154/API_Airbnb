@@ -7,7 +7,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
-    "test:integration": "node --test test/api.integration.test.js"
+    "test:integration": "node scripts/run-integration-tests.js"
   },
   "keywords": [],
   "author": "",
