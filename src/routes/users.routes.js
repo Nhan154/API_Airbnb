@@ -8,37 +8,56 @@ import {
     deleteUser,
     searchUsers,
     getUsersPagination,
+    uploadAvatar,
 } from "../controllers/users.controller.js";
+
+import { authenticate } from "../middlewares/auth.middleware.js";
+import { authorize } from "../middlewares/role.middleware.js";
 import upload from "../middlewares/upload.middleware.js";
-import { uploadAvatar } from "../controllers/users.controller.js";
+import { validateImageUpload } from "../middlewares/validate-image.middleware.js";
 
 const router = express.Router();
 
-// Lấy danh sách
-router.get("/", getUsers);
+// Chỉ ADMIN được xem danh sách
+router.get("/", authenticate, authorize("ADMIN"), getUsers);
 
-// Tạo người dùng
-router.post("/", createUser);
+// Chỉ ADMIN được tạo người dùng
+router.post("/", authenticate, authorize("ADMIN"), createUser);
 
-// Phân trang và tìm kiếm
-router.get("/phan-trang-tim-kiem", getUsersPagination);
+// Chỉ ADMIN được phân trang
+router.get(
+    "/phan-trang-tim-kiem",
+    authenticate,
+    authorize("ADMIN"),
+    getUsersPagination
+);
 
-// Tìm kiếm theo tên
-router.get("/search/:TenNguoiDung", searchUsers);
+// Chỉ ADMIN được tìm kiếm người dùng
+router.get(
+    "/search/:TenNguoiDung",
+    authenticate,
+    authorize("ADMIN"),
+    searchUsers
+);
 
-// Lấy chi tiết
-router.get("/:id", getUserById);
+// USER chỉ xem tài khoản của mình
+// ADMIN xem được tất cả
+router.get("/:id", authenticate, getUserById);
 
-// Cập nhật
-router.put("/:id", updateUser);
+// USER chỉ cập nhật tài khoản của mình
+// ADMIN cập nhật được tất cả
+router.put("/:id", authenticate, updateUser);
 
+// Upload avatar
 router.post(
     "/upload-avatar",
+    authenticate,
     upload.single("formFile"),
+    validateImageUpload,
     uploadAvatar
 );
 
-// Xóa theo query id
-router.delete("/", deleteUser);
+// Chỉ ADMIN được xóa
+router.delete("/", authenticate, authorize("ADMIN"), deleteUser);
 
 export default router;

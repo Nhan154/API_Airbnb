@@ -1,5 +1,7 @@
+import { sendPrismaError, logRequestError } from "../utils/sendPrismaError.js";
 import prisma from "../config/prisma.js";
 import uploadToCloudinary from "../utils/uploadToCloudinary.js";
+import { hasNonEmptyBody, isOptionalString } from "../utils/requestValidation.js";
 
 // GET /api/vi-tri
 // Lấy danh sách tất cả vị trí
@@ -16,7 +18,8 @@ export const getLocations = async (req, res) => {
             data: locations,
         });
     } catch (error) {
-        console.error("Get locations error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Get locations error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi lấy danh sách vị trí",
@@ -28,6 +31,9 @@ export const getLocations = async (req, res) => {
 // Tạo vị trí mới
 export const createLocation = async (req, res) => {
     try {
+        if (!hasNonEmptyBody(req.body)) {
+            return res.status(400).json({ message: "Body phải là object JSON không rỗng." });
+        }
         const {
             tenViTri,
             tinhThanh,
@@ -35,7 +41,7 @@ export const createLocation = async (req, res) => {
             hinhAnh,
         } = req.body;
 
-        if (!tenViTri || !tinhThanh || !quocGia) {
+        if ([tenViTri, tinhThanh, quocGia].some((value) => typeof value !== "string" || !value.trim()) || !isOptionalString(hinhAnh)) {
             return res.status(400).json({
                 message: "Vui lòng nhập tenViTri, tinhThanh và quocGia",
             });
@@ -55,7 +61,8 @@ export const createLocation = async (req, res) => {
             data: newLocation,
         });
     } catch (error) {
-        console.error("Create location error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Create location error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi tạo vị trí",
@@ -90,7 +97,8 @@ export const getLocationById = async (req, res) => {
             data: location,
         });
     } catch (error) {
-        console.error("Get location by ID error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Get location by ID error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi lấy thông tin vị trí",
@@ -102,6 +110,9 @@ export const getLocationById = async (req, res) => {
 // Cập nhật thông tin vị trí
 export const updateLocation = async (req, res) => {
     try {
+        if (!hasNonEmptyBody(req.body)) {
+            return res.status(400).json({ message: "Body phải là object JSON không rỗng." });
+        }
         const id = Number(req.params.id);
 
         if (!Number.isInteger(id) || id <= 0) {
@@ -127,14 +138,27 @@ export const updateLocation = async (req, res) => {
             hinhAnh,
         } = req.body;
 
+        if ((tenViTri !== undefined && (typeof tenViTri !== "string" || !tenViTri.trim())) ||
+            (tinhThanh !== undefined && (typeof tinhThanh !== "string" || !tinhThanh.trim())) ||
+            (quocGia !== undefined && (typeof quocGia !== "string" || !quocGia.trim())) ||
+            !isOptionalString(hinhAnh)) {
+            return res.status(400).json({ message: "Dữ liệu vị trí không hợp lệ." });
+        }
+
+        const data = {
+            ...(tenViTri !== undefined && { tenViTri: tenViTri.trim() }),
+            ...(tinhThanh !== undefined && { tinhThanh: tinhThanh.trim() }),
+            ...(quocGia !== undefined && { quocGia: quocGia.trim() }),
+            ...(hinhAnh !== undefined && { hinhAnh }),
+        };
+
+        if (!Object.keys(data).length) {
+            return res.status(400).json({ message: "Không có trường vị trí hợp lệ để cập nhật." });
+        }
+
         const updatedLocation = await prisma.viTri.update({
             where: { id },
-            data: {
-                ...(tenViTri !== undefined && { tenViTri }),
-                ...(tinhThanh !== undefined && { tinhThanh }),
-                ...(quocGia !== undefined && { quocGia }),
-                ...(hinhAnh !== undefined && { hinhAnh }),
-            },
+            data,
         });
 
         return res.status(200).json({
@@ -142,7 +166,8 @@ export const updateLocation = async (req, res) => {
             data: updatedLocation,
         });
     } catch (error) {
-        console.error("Update location error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Update location error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi cập nhật vị trí",
@@ -180,7 +205,8 @@ export const deleteLocation = async (req, res) => {
             message: "Xóa vị trí thành công",
         });
     } catch (error) {
-        console.error("Delete location error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Delete location error", error);
 
         if (error.code === "P2003") {
             return res.status(409).json({
@@ -253,7 +279,8 @@ export const getLocationsPagination = async (req, res) => {
             data: locations,
         });
     } catch (error) {
-        console.error("Pagination locations error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Pagination locations error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi phân trang vị trí",
@@ -314,7 +341,8 @@ export const uploadLocationImage = async (req, res) => {
             content: updatedLocation,
         });
     } catch (error) {
-        console.error("Upload location image error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Upload location image error", error);
 
         return res.status(500).json({
             message: "Lỗi khi upload hình ảnh vị trí.",

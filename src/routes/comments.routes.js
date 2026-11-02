@@ -1,5 +1,6 @@
 
 import express from "express";
+import { authenticate } from "../middlewares/auth.middleware.js";
 
 import {
     getComments,
@@ -12,7 +13,7 @@ import {
 const router = express.Router();
 
 router.get("/", getComments);
-router.post("/", createComment);
+router.post("/", authenticate, createComment);
 
 // Đặt route cụ thể trước route /:id
 router.get(
@@ -20,7 +21,7 @@ router.get(
     getCommentsByRoom
 );
 
-router.put("/:id", updateComment);
-router.delete("/:id", deleteComment);
+router.put("/:id", authenticate, updateComment);
+router.delete("/:id", authenticate, deleteComment);
 
 export default router;

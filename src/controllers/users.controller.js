@@ -1,3 +1,4 @@
+import { sendPrismaError, logRequestError } from "../utils/sendPrismaError.js";
 import prisma from "../config/prisma.js";
 import bcrypt from "bcrypt";
 import uploadToCloudinary from "../utils/uploadToCloudinary.js";
@@ -7,6 +8,13 @@ const removePassword = (user) => {
     const { password, ...userWithoutPassword } = user;
     return userWithoutPassword;
 };
+
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+const optionalProfileFieldsAreValid = ({ phone, birthday, gender }) =>
+    (phone === undefined || phone === null || typeof phone === "string") &&
+    (birthday === undefined || birthday === null || typeof birthday === "string") &&
+    (gender === undefined || gender === null || typeof gender === "boolean");
 
 // GET /api/users
 // Lấy danh sách tất cả người dùng
@@ -23,7 +31,8 @@ export const getUsers = async (req, res) => {
             data: users.map(removePassword),
         });
     } catch (error) {
-        console.error("Get users error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Get users error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi lấy danh sách người dùng",
@@ -34,25 +43,26 @@ export const getUsers = async (req, res) => {
 // POST /api/users
 // Tạo người dùng mới
 export const createUser = async (req, res) => {
-    try {
-        const {
-            name,
-            email,
-            password,
-            phone,
-            birthday,
-            gender,
-            role,
-        } = req.body;
+    const body = req.body ?? {};
 
-        if (!name || !email || !password || !role) {
+    if (typeof body !== "object" || Array.isArray(body) || Object.keys(body).length === 0) {
+        return res.status(400).json({ message: "Vui lòng cung cấp thông tin người dùng." });
+    }
+    try {
+        const { name, email, password, phone, birthday, gender, role } = body;
+
+        if (typeof name !== "string" || !name.trim() || typeof email !== "string" ||
+            !isValidEmail(email.trim()) || typeof password !== "string" || password.length < 8 ||
+            !["USER", "ADMIN"].includes(role) || !optionalProfileFieldsAreValid({ phone, birthday, gender })) {
             return res.status(400).json({
-                message: "Vui lòng nhập name, email, password và role",
+                message: "Thông tin người dùng không hợp lệ; mật khẩu phải có ít nhất 8 ký tự.",
             });
         }
 
+        const normalizedEmail = email.trim().toLowerCase();
+
         const existingUser = await prisma.nguoiDung.findUnique({
-            where: { email },
+            where: { email: normalizedEmail },
         });
 
         if (existingUser) {
@@ -65,8 +75,8 @@ export const createUser = async (req, res) => {
 
         const newUser = await prisma.nguoiDung.create({
             data: {
-                name,
-                email,
+                name: name.trim(),
+                email: normalizedEmail,
                 password: hashedPassword,
                 phone,
                 birthday,
@@ -80,7 +90,8 @@ export const createUser = async (req, res) => {
             data: removePassword(newUser),
         });
     } catch (error) {
-        console.error("Create user error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Create user error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi tạo người dùng",
@@ -88,8 +99,8 @@ export const createUser = async (req, res) => {
     }
 };
 
-// GET /api/users/:id
 // Lấy thông tin một người dùng
+// GET /api/users/:id
 export const getUserById = async (req, res) => {
     try {
         const id = Number(req.params.id);
@@ -110,12 +121,23 @@ export const getUserById = async (req, res) => {
             });
         }
 
+        // USER chỉ được xem tài khoản của mình
+        if (
+            req.user.role !== "ADMIN" &&
+            Number(req.user.id) !== id
+        ) {
+            return res.status(403).json({
+                message: "Bạn không có quyền xem tài khoản này.",
+            });
+        }
+
         return res.status(200).json({
             message: "Lấy thông tin người dùng thành công",
             data: removePassword(user),
         });
     } catch (error) {
-        console.error("Get user by ID error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Get user by ID error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi lấy thông tin người dùng",
@@ -123,8 +145,8 @@ export const getUserById = async (req, res) => {
     }
 };
 
-// PUT /api/users/:id
 // Cập nhật thông tin người dùng
+// PUT /api/users/:id
 export const updateUser = async (req, res) => {
     try {
         const id = Number(req.params.id);
@@ -135,6 +157,20 @@ export const updateUser = async (req, res) => {
             });
         }
 
+        // Kiểm tra request body
+        const body = req.body ?? {};
+
+        if (
+            typeof body !== "object" ||
+            Array.isArray(body) ||
+            Object.keys(body).length === 0
+        ) {
+            return res.status(400).json({
+                message: "Vui lòng cung cấp dữ liệu cần cập nhật.",
+            });
+        }
+
+        // Kiểm tra người dùng tồn tại
         const existingUser = await prisma.nguoiDung.findUnique({
             where: { id },
         });
@@ -145,6 +181,16 @@ export const updateUser = async (req, res) => {
             });
         }
 
+        // USER chỉ được cập nhật tài khoản của mình
+        if (
+            req.user.role !== "ADMIN" &&
+            Number(req.user.id) !== id
+        ) {
+            return res.status(403).json({
+                message: "Bạn không có quyền cập nhật tài khoản này.",
+            });
+        }
+
         const {
             name,
             email,
@@ -152,11 +198,28 @@ export const updateUser = async (req, res) => {
             birthday,
             gender,
             role,
-        } = req.body;
+        } = body;
 
-        if (email && email !== existingUser.email) {
+        if ((name !== undefined && (typeof name !== "string" || !name.trim())) ||
+            (email !== undefined && (typeof email !== "string" || !isValidEmail(email.trim()))) ||
+            (role !== undefined && !["USER", "ADMIN"].includes(role)) ||
+            !optionalProfileFieldsAreValid({ phone, birthday, gender })) {
+            return res.status(400).json({ message: "Thông tin người dùng không hợp lệ." });
+        }
+
+        const normalizedEmail = email === undefined ? undefined : email.trim().toLowerCase();
+
+        // USER không được thay đổi quyền
+        if (req.user.role !== "ADMIN" && role !== undefined) {
+            return res.status(403).json({
+                message: "Bạn không có quyền thay đổi vai trò người dùng.",
+            });
+        }
+
+        // Kiểm tra email đã tồn tại
+        if (normalizedEmail && normalizedEmail !== existingUser.email) {
             const emailExists = await prisma.nguoiDung.findUnique({
-                where: { email },
+                where: { email: normalizedEmail },
             });
 
             if (emailExists) {
@@ -169,12 +232,12 @@ export const updateUser = async (req, res) => {
         const updatedUser = await prisma.nguoiDung.update({
             where: { id },
             data: {
-                ...(name !== undefined && { name }),
-                ...(email !== undefined && { email }),
+                ...(name !== undefined && { name: name.trim() }),
+                ...(normalizedEmail !== undefined && { email: normalizedEmail }),
                 ...(phone !== undefined && { phone }),
                 ...(birthday !== undefined && { birthday }),
                 ...(gender !== undefined && { gender }),
-                ...(role !== undefined && { role }),
+                ...(req.user.role === "ADMIN" && role !== undefined && { role }),
             },
         });
 
@@ -182,8 +245,10 @@ export const updateUser = async (req, res) => {
             message: "Cập nhật người dùng thành công",
             data: removePassword(updatedUser),
         });
+
     } catch (error) {
-        console.error("Update user error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Update user error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi cập nhật người dùng",
@@ -221,7 +286,8 @@ export const deleteUser = async (req, res) => {
             message: "Xóa người dùng thành công",
         });
     } catch (error) {
-        console.error("Delete user error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Delete user error", error);
 
         // P2003: Người dùng đang được tham chiếu bởi bảng khác
         if (error.code === "P2003") {
@@ -258,7 +324,8 @@ export const searchUsers = async (req, res) => {
             data: users.map(removePassword),
         });
     } catch (error) {
-        console.error("Search users error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Search users error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi tìm kiếm người dùng",
@@ -320,7 +387,8 @@ export const getUsersPagination = async (req, res) => {
             data: users.map(removePassword),
         });
     } catch (error) {
-        console.error("Pagination users error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Pagination users error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi phân trang người dùng",
@@ -331,7 +399,7 @@ export const getUsersPagination = async (req, res) => {
 // Upload ảnh đại diện người dùng
 export const uploadAvatar = async (req, res) => {
     try {
-        const { id } = req.body;
+        const id = req.user.id;
 
         // Kiểm tra mã người dùng
         if (!id || isNaN(Number(id))) {
@@ -357,6 +425,12 @@ export const uploadAvatar = async (req, res) => {
         if (!user) {
             return res.status(404).json({
                 message: "Không tìm thấy người dùng.",
+            });
+        }
+
+        if (req.user.role !== "ADMIN" && req.user.id !== id) {
+            return res.status(403).json({
+                message: "Bạn không có quyền xem thông tin người dùng này.",
             });
         }
 
@@ -387,7 +461,8 @@ export const uploadAvatar = async (req, res) => {
             content: updatedUser,
         });
     } catch (error) {
-        console.error("Upload avatar error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Upload avatar error", error);
 
         return res.status(500).json({
             message: "Lỗi khi upload ảnh đại diện.",

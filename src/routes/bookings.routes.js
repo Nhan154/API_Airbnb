@@ -1,5 +1,7 @@
 
 import express from "express";
+import { authenticate } from "../middlewares/auth.middleware.js";
+import { authorize } from "../middlewares/role.middleware.js";
 
 import {
     getBookings,
@@ -12,14 +14,14 @@ import {
 
 const router = express.Router();
 
-router.get("/", getBookings);
-router.post("/", createBooking);
+router.get("/", authenticate, authorize("ADMIN"), getBookings);
+router.post("/", authenticate, createBooking);
 
 // Route cụ thể phải đặt trước route /:id
-router.get("/lay-theo-nguoi-dung/:MaNguoiDung", getBookingsByUser);
+router.get("/lay-theo-nguoi-dung/:MaNguoiDung", authenticate, getBookingsByUser);
 
-router.get("/:id", getBookingById);
-router.put("/:id", updateBooking);
-router.delete("/:id", deleteBooking);
+router.get("/:id", authenticate, getBookingById);
+router.put("/:id", authenticate, updateBooking);
+router.delete("/:id", authenticate, deleteBooking);
 
 export default router;

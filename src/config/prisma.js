@@ -1,6 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 
+if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is required");
+}
+
 const databaseUrl = new URL(process.env.DATABASE_URL);
 
 const adapter = new PrismaMariaDb({

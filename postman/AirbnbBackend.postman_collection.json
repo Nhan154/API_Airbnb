@@ -1,0 +1,67 @@
+{
+  "info": {
+    "name": "Airbnb Backend API",
+    "description": "36 operations theo danh sách Swagger được cung cấp trong yêu cầu. Chạy Auth > Signin trước và gán token thủ công vào biến {{token}}.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "token", "value": "" },
+    { "key": "id", "value": "1" },
+    { "key": "userId", "value": "1" },
+    { "key": "roomId", "value": "1" },
+    { "key": "locationId", "value": "1" },
+    { "key": "name", "value": "Nguyen An" }
+  ],
+  "item": [
+    { "name": "Auth", "item": [
+      { "name": "Signup", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Nguyen An\",\n  \"email\": \"an@example.com\",\n  \"password\": \"replace-with-strong-password\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/auth/signup" } },
+      { "name": "Signin", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"an@example.com\",\n  \"password\": \"replace-with-strong-password\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/auth/signin" } }
+    ] },
+    { "name": "Users", "item": [
+      { "name": "List users (ADMIN)", "request": { "method": "GET", "url": "{{baseUrl}}/api/users" } },
+      { "name": "Create user (ADMIN)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"name\":\"Nguyen An\",\"email\":\"an@example.com\",\"password\":\"replace-me\",\"role\":\"USER\"}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/users" } },
+      { "name": "Users pagination", "request": { "method": "GET", "url": "{{baseUrl}}/api/users/phan-trang-tim-kiem?pageIndex=1&pageSize=10&keyword=" } },
+      { "name": "Search users by name", "request": { "method": "GET", "url": "{{baseUrl}}/api/users/search/{{name}}" } },
+      { "name": "Get user by id", "request": { "method": "GET", "url": "{{baseUrl}}/api/users/{{userId}}" } },
+      { "name": "Update user by id", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"name\":\"Nguyen An updated\"}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/users/{{userId}}" } },
+      { "name": "Delete user by query id (ADMIN)", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/users?id={{userId}}" } },
+      { "name": "Upload avatar (formFile)", "request": { "method": "POST", "body": { "mode": "formdata", "formdata": [{ "key": "formFile", "type": "file", "src": "" }] }, "url": "{{baseUrl}}/api/users/upload-avatar" } }
+    ] },
+    { "name": "Rooms", "item": [
+      { "name": "List rooms", "request": { "method": "GET", "url": "{{baseUrl}}/api/phong-thue" } },
+      { "name": "Create room (ADMIN)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"tenPhong\":\"Studio\",\"khach\":2,\"phongNgu\":1,\"giuong\":1,\"phongTam\":1,\"moTa\":\"Near center\",\"giaTien\":900000,\"maViTri\":{{locationId}}}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/phong-thue" } },
+      { "name": "Rooms by location", "request": { "method": "GET", "url": "{{baseUrl}}/api/phong-thue/lay-phong-theo-vi-tri?maViTri={{locationId}}" } },
+      { "name": "Rooms pagination/search", "request": { "method": "GET", "url": "{{baseUrl}}/api/phong-thue/phan-trang-tim-kiem?pageIndex=1&pageSize=10&keyword=" } },
+      { "name": "Get room by id", "request": { "method": "GET", "url": "{{baseUrl}}/api/phong-thue/{{roomId}}" } },
+      { "name": "Update room (ADMIN)", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"giaTien\":950000}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/phong-thue/{{roomId}}" } },
+      { "name": "Delete room (ADMIN)", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/phong-thue/{{roomId}}" } },
+      { "name": "Upload room image (formFile)", "request": { "method": "POST", "body": { "mode": "formdata", "formdata": [{ "key": "formFile", "type": "file", "src": "" }] }, "url": "{{baseUrl}}/api/phong-thue/upload-hinh-phong?maPhong={{roomId}}" } }
+    ] },
+    { "name": "Locations", "item": [
+      { "name": "List locations", "request": { "method": "GET", "url": "{{baseUrl}}/api/vi-tri" } },
+      { "name": "Create location (ADMIN)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"tenViTri\":\"District 1\",\"tinhThanh\":\"Ho Chi Minh\",\"quocGia\":\"Vietnam\"}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/vi-tri" } },
+      { "name": "Locations pagination/search", "request": { "method": "GET", "url": "{{baseUrl}}/api/vi-tri/phan-trang-tim-kiem?pageIndex=1&pageSize=10&keyword=" } },
+      { "name": "Get location by id", "request": { "method": "GET", "url": "{{baseUrl}}/api/vi-tri/{{locationId}}" } },
+      { "name": "Update location (ADMIN)", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"tinhThanh\":\"Ho Chi Minh City\"}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/vi-tri/{{locationId}}" } },
+      { "name": "Delete location (ADMIN)", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/vi-tri/{{locationId}}" } },
+      { "name": "Upload location image (formFile)", "request": { "method": "POST", "body": { "mode": "formdata", "formdata": [{ "key": "formFile", "type": "file", "src": "" }] }, "url": "{{baseUrl}}/api/vi-tri/upload-hinh-vitri?maViTri={{locationId}}" } }
+    ] },
+    { "name": "Bookings", "item": [
+      { "name": "List all bookings (ADMIN)", "request": { "method": "GET", "url": "{{baseUrl}}/api/dat-phong" } },
+      { "name": "Create booking", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"maPhong\":{{roomId}},\"ngayDen\":\"2026-12-10T00:00:00.000Z\",\"ngayDi\":\"2026-12-12T00:00:00.000Z\",\"soLuongKhach\":2}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/dat-phong" } },
+      { "name": "Get booking by id", "request": { "method": "GET", "url": "{{baseUrl}}/api/dat-phong/{{id}}" } },
+      { "name": "Update booking by id", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"soLuongKhach\":1}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/dat-phong/{{id}}" } },
+      { "name": "Delete booking by id", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/dat-phong/{{id}}" } },
+      { "name": "Bookings by user", "request": { "method": "GET", "url": "{{baseUrl}}/api/dat-phong/lay-theo-nguoi-dung/{{userId}}" } }
+    ] },
+    { "name": "Comments", "item": [
+      { "name": "List comments", "request": { "method": "GET", "url": "{{baseUrl}}/api/binh-luan" } },
+      { "name": "Create comment", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"maPhong\":{{roomId}},\"ngayBinhLuan\":\"2026-11-03T00:00:00.000Z\",\"noiDung\":\"Great stay\",\"saoBinhLuan\":5}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/binh-luan" } },
+      { "name": "Update comment by id", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"noiDung\":\"Updated review\"}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/binh-luan/{{id}}" } },
+      { "name": "Delete comment by id", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/binh-luan/{{id}}" } },
+      { "name": "Comments by room", "request": { "method": "GET", "url": "{{baseUrl}}/api/binh-luan/lay-binh-luan-theo-phong/{{roomId}}" } }
+    ] }
+  ]
+}

@@ -1,5 +1,7 @@
+import { sendPrismaError, logRequestError } from "../utils/sendPrismaError.js";
 
 import prisma from "../config/prisma.js";
+import { hasNonEmptyBody } from "../utils/requestValidation.js";
 
 // GET /api/binh-luan
 export const getComments = async (req, res) => {
@@ -20,7 +22,8 @@ export const getComments = async (req, res) => {
 
         return res.status(200).json(comments);
     } catch (error) {
-        console.error("Get comments error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Get comments error", error);
         return res.status(500).json({
             message: "Lỗi khi lấy danh sách bình luận.",
         });
@@ -30,24 +33,24 @@ export const getComments = async (req, res) => {
 // POST /api/binh-luan
 export const createComment = async (req, res) => {
     try {
+        if (!hasNonEmptyBody(req.body)) return res.status(400).json({ message: "Body phải là object JSON không rỗng." });
+        const body = req.body ?? {};
         const {
             maPhong,
-            maNguoiBinhLuan,
             ngayBinhLuan,
             noiDung,
             saoBinhLuan,
-        } = req.body;
+        } = body;
 
         const roomId = Number(maPhong);
-        const userId = Number(maNguoiBinhLuan);
+        const userId = Number(req.user.id);
         const rating = Number(saoBinhLuan);
         const commentDate = new Date(ngayBinhLuan);
 
         if (
             maPhong === undefined ||
-            maNguoiBinhLuan === undefined ||
             !ngayBinhLuan ||
-            !noiDung ||
+            typeof noiDung !== "string" || !noiDung.trim() ||
             saoBinhLuan === undefined
         ) {
             return res.status(400).json({
@@ -58,8 +61,6 @@ export const createComment = async (req, res) => {
         if (
             !Number.isInteger(roomId) ||
             roomId <= 0 ||
-            !Number.isInteger(userId) ||
-            userId <= 0 ||
             !Number.isInteger(rating) ||
             rating < 1 ||
             rating > 5 ||
@@ -105,7 +106,8 @@ export const createComment = async (req, res) => {
             data: comment,
         });
     } catch (error) {
-        console.error("Create comment error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Create comment error", error);
         return res.status(500).json({
             message: "Lỗi khi tạo bình luận.",
         });
@@ -115,6 +117,7 @@ export const createComment = async (req, res) => {
 // PUT /api/binh-luan/:id
 export const updateComment = async (req, res) => {
     try {
+        if (!hasNonEmptyBody(req.body)) return res.status(400).json({ message: "Body phải là object JSON không rỗng." });
         const id = Number(req.params.id);
 
         if (!Number.isInteger(id) || id <= 0) {
@@ -133,10 +136,20 @@ export const updateComment = async (req, res) => {
             });
         }
 
+        if (req.user.role !== "ADMIN" && existingComment.maNguoiBinhLuan !== Number(req.user.id)) {
+            return res.status(403).json({ message: "Bạn không có quyền cập nhật bình luận này." });
+        }
+
+        if (req.user.role !== "ADMIN" && req.body?.maNguoiBinhLuan !== undefined) {
+            return res.status(403).json({ message: "Không được thay đổi người tạo bình luận." });
+        }
+
         const data = {};
 
-        if (req.body.maPhong !== undefined) {
-            const roomId = Number(req.body.maPhong);
+        const body = req.body ?? {};
+
+        if (body.maPhong !== undefined) {
+            const roomId = Number(body.maPhong);
 
             if (!Number.isInteger(roomId) || roomId <= 0) {
                 return res.status(400).json({
@@ -157,8 +170,8 @@ export const updateComment = async (req, res) => {
             data.maPhong = roomId;
         }
 
-        if (req.body.maNguoiBinhLuan !== undefined) {
-            const userId = Number(req.body.maNguoiBinhLuan);
+        if (body.maNguoiBinhLuan !== undefined) {
+            const userId = Number(body.maNguoiBinhLuan);
 
             if (!Number.isInteger(userId) || userId <= 0) {
                 return res.status(400).json({
@@ -179,8 +192,8 @@ export const updateComment = async (req, res) => {
             data.maNguoiBinhLuan = userId;
         }
 
-        if (req.body.ngayBinhLuan !== undefined) {
-            const date = new Date(req.body.ngayBinhLuan);
+        if (body.ngayBinhLuan !== undefined) {
+            const date = new Date(body.ngayBinhLuan);
 
             if (Number.isNaN(date.getTime())) {
                 return res.status(400).json({
@@ -191,21 +204,21 @@ export const updateComment = async (req, res) => {
             data.ngayBinhLuan = date;
         }
 
-        if (req.body.noiDung !== undefined) {
+        if (body.noiDung !== undefined) {
             if (
-                typeof req.body.noiDung !== "string" ||
-                !req.body.noiDung.trim()
+                typeof body.noiDung !== "string" ||
+                !body.noiDung.trim()
             ) {
                 return res.status(400).json({
                     message: "Nội dung bình luận không được để trống.",
                 });
             }
 
-            data.noiDung = req.body.noiDung.trim();
+            data.noiDung = body.noiDung.trim();
         }
 
-        if (req.body.saoBinhLuan !== undefined) {
-            const rating = Number(req.body.saoBinhLuan);
+        if (body.saoBinhLuan !== undefined) {
+            const rating = Number(body.saoBinhLuan);
 
             if (
                 !Number.isInteger(rating) ||
@@ -230,7 +243,8 @@ export const updateComment = async (req, res) => {
             data: updatedComment,
         });
     } catch (error) {
-        console.error("Update comment error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Update comment error", error);
         return res.status(500).json({
             message: "Lỗi khi cập nhật bình luận.",
         });
@@ -258,6 +272,10 @@ export const deleteComment = async (req, res) => {
             });
         }
 
+        if (req.user.role !== "ADMIN" && comment.maNguoiBinhLuan !== Number(req.user.id)) {
+            return res.status(403).json({ message: "Bạn không có quyền xóa bình luận này." });
+        }
+
         await prisma.binhLuan.delete({
             where: { id },
         });
@@ -266,7 +284,8 @@ export const deleteComment = async (req, res) => {
             message: "Xóa bình luận thành công.",
         });
     } catch (error) {
-        console.error("Delete comment error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Delete comment error", error);
         return res.status(500).json({
             message: "Lỗi khi xóa bình luận.",
         });
@@ -310,7 +329,8 @@ export const getCommentsByRoom = async (req, res) => {
 
         return res.status(200).json(comments);
     } catch (error) {
-        console.error("Get comments by room error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Get comments by room error", error);
         return res.status(500).json({
             message: "Lỗi khi lấy bình luận theo phòng.",
         });

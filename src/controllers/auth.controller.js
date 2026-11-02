@@ -1,10 +1,16 @@
+import { sendPrismaError, logRequestError } from "../utils/sendPrismaError.js";
 import prisma from "../config/prisma.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { isOptionalBoolean, isOptionalString, isPlainObject } from "../utils/requestValidation.js";
 
 // Đăng ký
 export const signup = async (req, res) => {
     try {
+        const body = req.body;
+        if (!isPlainObject(body) || !Object.keys(body).length) {
+            return res.status(400).json({ message: "Body phải là object JSON không rỗng." });
+        }
         const {
             name,
             email,
@@ -12,16 +18,23 @@ export const signup = async (req, res) => {
             phone,
             birthday,
             gender,
-        } = req.body;
+        } = body;
 
-        if (!name || !email || !password) {
+        if (typeof name !== "string" || !name.trim() || typeof email !== "string" || !email.trim() ||
+            typeof password !== "string" || password.length < 8 ||
+            !isOptionalString(phone) || !isOptionalString(birthday) || !isOptionalBoolean(gender)) {
             return res.status(400).json({
-                message: "Vui lòng nhập đầy đủ name, email và password",
+                message: "Tên, email hợp lệ và mật khẩu tối thiểu 8 ký tự là bắt buộc.",
             });
         }
 
+        const normalizedEmail = email.trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+            return res.status(400).json({ message: "Email không hợp lệ." });
+        }
+
         const existingUser = await prisma.nguoiDung.findUnique({
-            where: { email },
+            where: { email: normalizedEmail },
         });
 
         if (existingUser) {
@@ -34,8 +47,8 @@ export const signup = async (req, res) => {
 
         const newUser = await prisma.nguoiDung.create({
             data: {
-                name,
-                email,
+                name: name.trim(),
+                email: normalizedEmail,
                 password: hashedPassword,
                 phone,
                 birthday,
@@ -57,7 +70,8 @@ export const signup = async (req, res) => {
             },
         });
     } catch (error) {
-        console.error("Signup error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Signup error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi đăng ký",
@@ -68,16 +82,26 @@ export const signup = async (req, res) => {
 // Đăng nhập
 export const signin = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const body = req.body;
+        if (!isPlainObject(body)) return res.status(400).json({ message: "Body không hợp lệ." });
+        const { email, password } = body;
 
         if (!email || !password) {
             return res.status(400).json({
                 message: "Vui lòng nhập email và password",
             });
         }
+        if (typeof email !== "string" || typeof password !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+            return res.status(400).json({ message: "Email hoặc mật khẩu không hợp lệ." });
+        }
+
+        if (!process.env.JWT_SECRET) {
+            console.error("JWT_SECRET is not configured");
+            return res.status(500).json({ message: "Dịch vụ xác thực chưa được cấu hình." });
+        }
 
         const user = await prisma.nguoiDung.findUnique({
-            where: { email },
+            where: { email: String(email).trim().toLowerCase() },
         });
 
         if (!user) {
@@ -125,7 +149,8 @@ export const signin = async (req, res) => {
             },
         });
     } catch (error) {
-        console.error("Signin error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Signin error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi đăng nhập",

@@ -8,38 +8,45 @@ import {
     updateRoom,
     deleteRoom,
     getRoomsPagination,
+    uploadRoomImage,
 } from "../controllers/rooms.controller.js";
-import upload from "../middlewares/upload.middleware.js";
-import { uploadRoomImage } from "../controllers/rooms.controller.js";
 
+import { authenticate } from "../middlewares/auth.middleware.js";
+import { authorize } from "../middlewares/role.middleware.js";
+import upload from "../middlewares/upload.middleware.js";
+import { validateImageUpload } from "../middlewares/validate-image.middleware.js";
 
 const router = express.Router();
 
-// Lấy danh sách phòng
+// USER và ADMIN đều được xem danh sách phòng
 router.get("/", getRooms);
 
-// Tạo phòng
-router.post("/", createRoom);
+// Chỉ ADMIN được tạo phòng
+router.post("/", authenticate, authorize("ADMIN"), createRoom);
 
-// Lấy phòng theo vị trí
+// USER và ADMIN đều được xem phòng theo vị trí
 router.get("/lay-phong-theo-vi-tri", getRoomsByLocation);
 
-// Phân trang và tìm kiếm
+// USER và ADMIN đều được tìm kiếm, phân trang
 router.get("/phan-trang-tim-kiem", getRoomsPagination);
 
+// Chỉ ADMIN được upload ảnh phòng
 router.post(
     "/upload-hinh-phong",
+    authenticate,
+    authorize("ADMIN"),
     upload.single("formFile"),
+    validateImageUpload,
     uploadRoomImage
 );
 
-// Lấy chi tiết phòng
+// USER và ADMIN đều được xem chi tiết phòng
 router.get("/:id", getRoomById);
 
-// Cập nhật phòng
-router.put("/:id", updateRoom);
+// Chỉ ADMIN được cập nhật phòng
+router.put("/:id", authenticate, authorize("ADMIN"), updateRoom);
 
-// Xóa phòng
-router.delete("/:id", deleteRoom);
+// Chỉ ADMIN được xóa phòng
+router.delete("/:id", authenticate, authorize("ADMIN"), deleteRoom);
 
 export default router;

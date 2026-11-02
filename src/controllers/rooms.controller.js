@@ -1,3 +1,4 @@
+import { sendPrismaError, logRequestError } from "../utils/sendPrismaError.js";
 import prisma from "../config/prisma.js";
 
 // Các trường tiện ích của phòng
@@ -13,6 +14,7 @@ const amenityFields = [
     "banUi",
 ];
 import uploadToCloudinary from "../utils/uploadToCloudinary.js";
+import { hasNonEmptyBody, isOptionalString } from "../utils/requestValidation.js";
 
 // Kiểm tra dữ liệu số nguyên không âm
 const isValidNonNegativeInteger = (value) => {
@@ -37,7 +39,8 @@ export const getRooms = async (req, res) => {
             data: rooms,
         });
     } catch (error) {
-        console.error("Get rooms error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Get rooms error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi lấy danh sách phòng thuê",
@@ -49,6 +52,9 @@ export const getRooms = async (req, res) => {
 // Tạo phòng thuê mới
 export const createRoom = async (req, res) => {
     try {
+        if (!hasNonEmptyBody(req.body)) {
+            return res.status(400).json({ message: "Body phải là object JSON không rỗng." });
+        }
         const {
             tenPhong,
             khach,
@@ -62,10 +68,14 @@ export const createRoom = async (req, res) => {
             ...amenities
         } = req.body;
 
+        if (typeof tenPhong !== "string" || !tenPhong.trim() || typeof moTa !== "string" || !moTa.trim() || !isOptionalString(hinhAnh)) {
+            return res.status(400).json({ message: "tenPhong, moTa hoặc hinhAnh không hợp lệ." });
+        }
+
         // Kiểm tra các trường bắt buộc
         if (
-            !tenPhong ||
-            !moTa ||
+            !tenPhong.trim() ||
+            !moTa.trim() ||
             khach === undefined ||
             phongNgu === undefined ||
             giuong === undefined ||
@@ -89,7 +99,7 @@ export const createRoom = async (req, res) => {
         };
 
         for (const [field, value] of Object.entries(numericFields)) {
-            if (!isValidNonNegativeInteger(value)) {
+            if (!isValidNonNegativeInteger(value) || (field === "khach" && value < 1)) {
                 return res.status(400).json({
                     message: `${field} phải là số nguyên không âm`,
                 });
@@ -146,7 +156,8 @@ export const createRoom = async (req, res) => {
             data: newRoom,
         });
     } catch (error) {
-        console.error("Create room error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Create room error", error);
 
         if (error.code === "P2003") {
             return res.status(400).json({
@@ -201,7 +212,8 @@ export const getRoomsByLocation = async (req, res) => {
             data: rooms,
         });
     } catch (error) {
-        console.error("Get rooms by location error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Get rooms by location error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi lấy phòng theo vị trí",
@@ -242,7 +254,8 @@ export const getRoomById = async (req, res) => {
             data: room,
         });
     } catch (error) {
-        console.error("Get room by ID error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Get room by ID error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi lấy thông tin phòng thuê",
@@ -254,6 +267,9 @@ export const getRoomById = async (req, res) => {
 // Cập nhật thông tin phòng thuê
 export const updateRoom = async (req, res) => {
     try {
+        if (!hasNonEmptyBody(req.body)) {
+            return res.status(400).json({ message: "Body phải là object JSON không rỗng." });
+        }
         const id = Number(req.params.id);
 
         if (!Number.isInteger(id) || id <= 0) {
@@ -287,6 +303,12 @@ export const updateRoom = async (req, res) => {
             ...amenities
         } = req.body;
 
+        if ((tenPhong !== undefined && (typeof tenPhong !== "string" || !tenPhong.trim())) ||
+            (moTa !== undefined && (typeof moTa !== "string" || !moTa.trim())) ||
+            !isOptionalString(hinhAnh)) {
+            return res.status(400).json({ message: "tenPhong, moTa hoặc hinhAnh không hợp lệ." });
+        }
+
         const numericFields = {
             khach,
             phongNgu,
@@ -299,7 +321,7 @@ export const updateRoom = async (req, res) => {
         for (const [field, value] of Object.entries(numericFields)) {
             if (
                 value !== undefined &&
-                !isValidNonNegativeInteger(value)
+                (!isValidNonNegativeInteger(value) || (field === "khach" && value < 1))
             ) {
                 return res.status(400).json({
                     message: `${field} phải là số nguyên không âm`,
@@ -342,6 +364,14 @@ export const updateRoom = async (req, res) => {
             }
         }
 
+        if (maViTri !== undefined && !await prisma.viTri.findUnique({ where: { id: maViTri } })) {
+            return res.status(404).json({ message: "Không tìm thấy vị trí." });
+        }
+
+        if (Object.keys(updateData).length === 0) {
+            return res.status(400).json({ message: "Không có trường phòng hợp lệ để cập nhật." });
+        }
+
         const updatedRoom = await prisma.phong.update({
             where: {
                 id,
@@ -357,7 +387,8 @@ export const updateRoom = async (req, res) => {
             data: updatedRoom,
         });
     } catch (error) {
-        console.error("Update room error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Update room error", error);
 
         if (error.code === "P2003") {
             return res.status(400).json({
@@ -405,7 +436,8 @@ export const deleteRoom = async (req, res) => {
             message: "Xóa phòng thuê thành công",
         });
     } catch (error) {
-        console.error("Delete room error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Delete room error", error);
 
         if (error.code === "P2003") {
             return res.status(409).json({
@@ -478,7 +510,8 @@ export const getRoomsPagination = async (req, res) => {
             data: rooms,
         });
     } catch (error) {
-        console.error("Pagination rooms error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Pagination rooms error", error);
 
         return res.status(500).json({
             message: "Lỗi server khi phân trang phòng thuê",
@@ -539,7 +572,8 @@ export const uploadRoomImage = async (req, res) => {
             content: updatedRoom,
         });
     } catch (error) {
-        console.error("Upload room image error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Upload room image error", error);
 
         return res.status(500).json({
             message: "Lỗi khi upload hình ảnh phòng thuê.",

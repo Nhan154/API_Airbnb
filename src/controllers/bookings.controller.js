@@ -1,5 +1,7 @@
+import { sendPrismaError, logRequestError } from "../utils/sendPrismaError.js";
 
 import prisma from "../config/prisma.js";
+import { hasNonEmptyBody, isPastCalendarDate, parseDate } from "../utils/requestValidation.js";
 
 // GET /api/dat-phong
 export const getBookings = async (req, res) => {
@@ -21,7 +23,8 @@ export const getBookings = async (req, res) => {
 
         return res.status(200).json(bookings);
     } catch (error) {
-        console.error("Get bookings error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Get bookings error", error);
         return res.status(500).json({
             message: "Lỗi khi lấy danh sách đặt phòng.",
         });
@@ -31,23 +34,28 @@ export const getBookings = async (req, res) => {
 // POST /api/dat-phong
 export const createBooking = async (req, res) => {
     try {
+        const body = req.body ?? {};
+        if (!hasNonEmptyBody(body)) {
+            return res.status(400).json({ message: "Body phải là object JSON không rỗng." });
+        }
         const {
             maPhong,
             ngayDen,
             ngayDi,
             soLuongKhach,
-            maNguoiDung,
-        } = req.body;
+        } = body;
 
         const roomId = Number(maPhong);
-        const userId = Number(maNguoiDung);
+        const requestedUserId = body.maNguoiDung;
+        const userId = req.user.role === "ADMIN" && requestedUserId !== undefined
+            ? Number(requestedUserId)
+            : Number(req.user.id);
         const guests = Number(soLuongKhach);
-        const checkIn = new Date(ngayDen);
-        const checkOut = new Date(ngayDi);
+        const checkIn = parseDate(ngayDen);
+        const checkOut = parseDate(ngayDi);
 
         if (
             !maPhong ||
-            !maNguoiDung ||
             !ngayDen ||
             !ngayDi ||
             soLuongKhach === undefined
@@ -59,7 +67,8 @@ export const createBooking = async (req, res) => {
 
         if (
             !Number.isInteger(roomId) ||
-            !Number.isInteger(userId) ||
+            roomId <= 0 ||
+            !Number.isInteger(userId) || userId <= 0 ||
             !Number.isInteger(guests) ||
             guests < 1
         ) {
@@ -69,13 +78,16 @@ export const createBooking = async (req, res) => {
         }
 
         if (
-            Number.isNaN(checkIn.getTime()) ||
-            Number.isNaN(checkOut.getTime()) ||
+            !checkIn || !checkOut ||
             checkOut <= checkIn
         ) {
             return res.status(400).json({
                 message: "Ngày đi phải hợp lệ và sau ngày đến.",
             });
+        }
+
+        if (isPastCalendarDate(checkIn)) {
+            return res.status(400).json({ message: "Ngày nhận phòng không được ở trong quá khứ." });
         }
 
         const room = await prisma.phong.findUnique({
@@ -104,22 +116,35 @@ export const createBooking = async (req, res) => {
             });
         }
 
-        const booking = await prisma.datPhong.create({
-            data: {
-                maPhong: roomId,
-                ngayDen: checkIn,
-                ngayDi: checkOut,
-                soLuongKhach: guests,
-                maNguoiDat: userId,
-            },
+        const result = await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM Phong WHERE id = ${roomId} FOR UPDATE`;
+            const lockedRoom = await tx.phong.findUnique({ where: { id: roomId } });
+            if (!lockedRoom) return { missingRoom: true };
+            if (guests > lockedRoom.khach) return { overCapacity: true };
+
+            const conflict = await tx.datPhong.findFirst({
+                where: { maPhong: roomId, ngayDen: { lt: checkOut }, ngayDi: { gt: checkIn } },
+                select: { id: true },
+            });
+            if (conflict) return { conflict: true };
+
+            const booking = await tx.datPhong.create({
+                data: { maPhong: roomId, ngayDen: checkIn, ngayDi: checkOut, soLuongKhach: guests, maNguoiDat: userId },
+            });
+            return { booking };
         });
+
+        if (result.missingRoom) return res.status(404).json({ message: "Không tìm thấy phòng." });
+        if (result.overCapacity) return res.status(400).json({ message: "Số lượng khách vượt quá sức chứa của phòng." });
+        if (result.conflict) return res.status(409).json({ message: "Phòng đã được đặt trong khoảng thời gian này." });
 
         return res.status(201).json({
             message: "Đặt phòng thành công.",
-            data: booking,
+            data: result.booking,
         });
     } catch (error) {
-        console.error("Create booking error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Create booking error", error);
         return res.status(500).json({
             message: "Lỗi khi tạo đặt phòng.",
         });
@@ -158,9 +183,14 @@ export const getBookingById = async (req, res) => {
             });
         }
 
+        if (req.user.role !== "ADMIN" && booking.maNguoiDat !== Number(req.user.id)) {
+            return res.status(403).json({ message: "Bạn không có quyền xem đặt phòng này." });
+        }
+
         return res.status(200).json(booking);
     } catch (error) {
-        console.error("Get booking error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Get booking error", error);
         return res.status(500).json({
             message: "Lỗi khi lấy thông tin đặt phòng.",
         });
@@ -170,6 +200,8 @@ export const getBookingById = async (req, res) => {
 // PUT /api/dat-phong/:id
 export const updateBooking = async (req, res) => {
     try {
+        const body = req.body ?? {};
+        if (!hasNonEmptyBody(body)) return res.status(400).json({ message: "Body phải là object JSON không rỗng." });
         const id = Number(req.params.id);
 
         if (!Number.isInteger(id) || id <= 0) {
@@ -188,118 +220,61 @@ export const updateBooking = async (req, res) => {
             });
         }
 
-        const data = {};
-
-        if (req.body.maPhong !== undefined) {
-            const roomId = Number(req.body.maPhong);
-
-            if (!Number.isInteger(roomId) || roomId <= 0) {
-                return res.status(400).json({
-                    message: "Mã phòng không hợp lệ.",
-                });
-            }
-
-            data.maPhong = roomId;
+        if (req.user.role !== "ADMIN" && existingBooking.maNguoiDat !== Number(req.user.id)) {
+            return res.status(403).json({ message: "Bạn không có quyền cập nhật đặt phòng này." });
         }
 
-        if (req.body.maNguoiDung !== undefined) {
-            const userId = Number(req.body.maNguoiDung);
-
-            if (!Number.isInteger(userId) || userId <= 0) {
-                return res.status(400).json({
-                    message: "Mã người dùng không hợp lệ.",
-                });
-            }
-
-            data.maNguoiDat = userId;
+        if (req.user.role !== "ADMIN" && body.maNguoiDung !== undefined) {
+            return res.status(403).json({ message: "Không được thay đổi chủ sở hữu đặt phòng." });
         }
+        const finalRoomId = body.maPhong === undefined ? existingBooking.maPhong : Number(body.maPhong);
+        const finalGuests = body.soLuongKhach === undefined ? existingBooking.soLuongKhach : Number(body.soLuongKhach);
+        const finalCheckIn = body.ngayDen === undefined ? existingBooking.ngayDen : parseDate(body.ngayDen);
+        const finalCheckOut = body.ngayDi === undefined ? existingBooking.ngayDi : parseDate(body.ngayDi);
+        const finalUserId = req.user.role === "ADMIN" && body.maNguoiDung !== undefined
+            ? Number(body.maNguoiDung)
+            : existingBooking.maNguoiDat;
 
-        if (req.body.soLuongKhach !== undefined) {
-            const guests = Number(req.body.soLuongKhach);
-
-            if (!Number.isInteger(guests) || guests < 1) {
-                return res.status(400).json({
-                    message: "Số lượng khách phải là số nguyên lớn hơn 0.",
-                });
-            }
-
-            data.soLuongKhach = guests;
+        if (!Number.isInteger(finalRoomId) || finalRoomId <= 0 ||
+            !Number.isInteger(finalGuests) || finalGuests <= 0 ||
+            !Number.isInteger(finalUserId) || finalUserId <= 0 || !finalCheckIn || !finalCheckOut) {
+            return res.status(400).json({ message: "Mã phòng, người dùng, số khách hoặc ngày không hợp lệ." });
         }
+        if (finalCheckOut <= finalCheckIn) return res.status(400).json({ message: "Ngày đi phải sau ngày đến." });
+        if (isPastCalendarDate(finalCheckIn)) return res.status(400).json({ message: "Ngày nhận phòng không được ở trong quá khứ." });
 
-        if (req.body.ngayDen !== undefined) {
-            const checkIn = new Date(req.body.ngayDen);
+        const [firstLock, secondLock] = [existingBooking.maPhong, finalRoomId].sort((a, b) => a - b);
+        const result = await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM Phong WHERE id = ${firstLock} FOR UPDATE`;
+            if (secondLock !== firstLock) await tx.$queryRaw`SELECT id FROM Phong WHERE id = ${secondLock} FOR UPDATE`;
 
-            if (Number.isNaN(checkIn.getTime())) {
-                return res.status(400).json({
-                    message: "Ngày đến không hợp lệ.",
-                });
-            }
+            const room = await tx.phong.findUnique({ where: { id: finalRoomId } });
+            if (!room) return { missingRoom: true };
+            if (finalGuests > room.khach) return { overCapacity: true };
+            if (!await tx.nguoiDung.findUnique({ where: { id: finalUserId }, select: { id: true } })) return { missingUser: true };
 
-            data.ngayDen = checkIn;
-        }
-
-        if (req.body.ngayDi !== undefined) {
-            const checkOut = new Date(req.body.ngayDi);
-
-            if (Number.isNaN(checkOut.getTime())) {
-                return res.status(400).json({
-                    message: "Ngày đi không hợp lệ.",
-                });
-            }
-
-            data.ngayDi = checkOut;
-        }
-
-        const finalCheckIn = data.ngayDen ?? existingBooking.ngayDen;
-        const finalCheckOut = data.ngayDi ?? existingBooking.ngayDi;
-
-        if (finalCheckOut <= finalCheckIn) {
-            return res.status(400).json({
-                message: "Ngày đi phải sau ngày đến.",
+            const conflict = await tx.datPhong.findFirst({
+                where: { id: { not: id }, maPhong: finalRoomId, ngayDen: { lt: finalCheckOut }, ngayDi: { gt: finalCheckIn } },
+                select: { id: true },
             });
-        }
+            if (conflict) return { conflict: true };
 
-        const finalRoomId = data.maPhong ?? existingBooking.maPhong;
-        const finalUserId = data.maNguoiDat ?? existingBooking.maNguoiDat;
-        const finalGuests = data.soLuongKhach ?? existingBooking.soLuongKhach;
-
-        const room = await prisma.phong.findUnique({
-            where: { id: finalRoomId },
+            const data = { maPhong: finalRoomId, maNguoiDat: finalUserId, soLuongKhach: finalGuests, ngayDen: finalCheckIn, ngayDi: finalCheckOut };
+            return { booking: await tx.datPhong.update({ where: { id }, data }) };
         });
 
-        if (!room) {
-            return res.status(404).json({
-                message: "Không tìm thấy phòng.",
-            });
-        }
-
-        const user = await prisma.nguoiDung.findUnique({
-            where: { id: finalUserId },
-        });
-
-        if (!user) {
-            return res.status(404).json({
-                message: "Không tìm thấy người dùng.",
-            });
-        }
-
-        if (finalGuests > room.khach) {
-            return res.status(400).json({
-                message: "Số lượng khách vượt quá sức chứa của phòng.",
-            });
-        }
-
-        const updatedBooking = await prisma.datPhong.update({
-            where: { id },
-            data,
-        });
+        if (result.missingRoom) return res.status(404).json({ message: "Không tìm thấy phòng." });
+        if (result.missingUser) return res.status(404).json({ message: "Không tìm thấy người dùng." });
+        if (result.overCapacity) return res.status(400).json({ message: "Số lượng khách vượt quá sức chứa của phòng." });
+        if (result.conflict) return res.status(409).json({ message: "Phòng đã được đặt trong khoảng thời gian này." });
 
         return res.status(200).json({
             message: "Cập nhật đặt phòng thành công.",
-            data: updatedBooking,
+            data: result.booking,
         });
     } catch (error) {
-        console.error("Update booking error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Update booking error", error);
         return res.status(500).json({
             message: "Lỗi khi cập nhật đặt phòng.",
         });
@@ -327,6 +302,10 @@ export const deleteBooking = async (req, res) => {
             });
         }
 
+        if (req.user.role !== "ADMIN" && booking.maNguoiDat !== Number(req.user.id)) {
+            return res.status(403).json({ message: "Bạn không có quyền xóa đặt phòng này." });
+        }
+
         await prisma.datPhong.delete({
             where: { id },
         });
@@ -335,7 +314,8 @@ export const deleteBooking = async (req, res) => {
             message: "Xóa đặt phòng thành công.",
         });
     } catch (error) {
-        console.error("Delete booking error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Delete booking error", error);
         return res.status(500).json({
             message: "Lỗi khi xóa đặt phòng.",
         });
@@ -363,6 +343,10 @@ export const getBookingsByUser = async (req, res) => {
             });
         }
 
+        if (req.user.role !== "ADMIN" && Number(req.user.id) !== userId) {
+            return res.status(403).json({ message: "Bạn không có quyền xem đặt phòng của người dùng này." });
+        }
+
         const bookings = await prisma.datPhong.findMany({
             where: { maNguoiDat: userId },
             include: {
@@ -373,7 +357,8 @@ export const getBookingsByUser = async (req, res) => {
 
         return res.status(200).json(bookings);
     } catch (error) {
-        console.error("Get bookings by user error:", error);
+        if (sendPrismaError(res, error)) return;
+        logRequestError("Get bookings by user error", error);
         return res.status(500).json({
             message: "Lỗi khi lấy danh sách đặt phòng của người dùng.",
         });
