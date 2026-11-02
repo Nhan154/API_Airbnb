@@ -12,8 +12,15 @@ import locationsRoutes from "./routes/locations.routes.js";
 import roomsRoutes from "./routes/rooms.routes.js";
 import bookingsRoutes from "./routes/bookings.routes.js";
 import commentsRoutes from "./routes/comments.routes.js";
+import swaggerUi from "swagger-ui-express";
+import { readFileSync } from "node:fs";
 
 const app = express();
+
+// Swagger documentation
+const swaggerDocument = JSON.parse(
+    readFileSync(new URL("../swagger.json", import.meta.url), "utf8")
+);
 
 const allowedOrigins = process.env.CORS_ORIGIN?.split(",").map((origin) => origin.trim()).filter(Boolean);
 app.use(cors({
@@ -52,6 +59,13 @@ app.get("/api/health/db", async (req, res) => {
         });
     }
 });
+
+// Swagger UI
+app.use(
+    "/api-docs",
+    swaggerUi.serve,
+    swaggerUi.setup(swaggerDocument)
+);
 
 // Auth Routes
 app.use("/api/auth", authRoutes);
